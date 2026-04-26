@@ -22,39 +22,32 @@ void blur_simd(const unsigned char* src, unsigned char* dst, int w, int h) {
     for (int y = 0; y < h - 1; ++y) {
         int x = 0;
 
-        for (; x <= w - 1 - 4; x += 4) {
-            int a_val;
-            int b_val;
-            int c_val;
-            int d_val;
+        for (; x <= w - 1 - 16; x += 16) {
+            __m128i a = _mm_loadu_si128((const __m128i*)&src[y * w + x]);
+            __m128i b = _mm_loadu_si128((const __m128i*)&src[y * w + x + 1]);
+            __m128i c = _mm_loadu_si128((const __m128i*)&src[(y + 1) * w + x]);
+            __m128i d = _mm_loadu_si128((const __m128i*)&src[(y + 1) * w + x + 1]);
 
-            std::memcpy(&a_val, &src[y * w + x], 4);
-            std::memcpy(&b_val, &src[y * w + x + 1], 4);
-            std::memcpy(&c_val, &src[(y + 1) * w + x], 4);
-            std::memcpy(&d_val, &src[(y + 1) * w + x + 1], 4);
+            __m128i zero = _mm_setzero_si128();
 
-            __m128i a_bytes = _mm_cvtsi32_si128(a_val);
-            __m128i b_bytes = _mm_cvtsi32_si128(b_val);
-            __m128i c_bytes = _mm_cvtsi32_si128(c_val);
-            __m128i d_bytes = _mm_cvtsi32_si128(d_val);
+            __m128i a_lo = _mm_unpacklo_epi8(a, zero);
+            __m128i a_hi = _mm_unpackhi_epi8(a, zero);
+            __m128i b_lo = _mm_unpacklo_epi8(b, zero);
+            __m128i b_hi = _mm_unpackhi_epi8(b, zero);
+            __m128i c_lo = _mm_unpacklo_epi8(c, zero);
+            __m128i c_hi = _mm_unpackhi_epi8(c, zero);
+            __m128i d_lo = _mm_unpacklo_epi8(d, zero);
+            __m128i d_hi = _mm_unpackhi_epi8(d, zero);
 
-            __m128i a = _mm_cvtepu8_epi32(a_bytes);
-            __m128i b = _mm_cvtepu8_epi32(b_bytes);
-            __m128i c = _mm_cvtepu8_epi32(c_bytes);
-            __m128i d = _mm_cvtepu8_epi32(d_bytes);
+            __m128i sum_lo = _mm_add_epi16(_mm_add_epi16(a_lo, b_lo), _mm_add_epi16(c_lo, d_lo));
+            __m128i sum_hi = _mm_add_epi16(_mm_add_epi16(a_hi, b_hi), _mm_add_epi16(c_hi, d_hi));
 
-            __m128i sum1 = _mm_add_epi32(a, b);
-            __m128i sum2 = _mm_add_epi32(c, d);
-            __m128i sum = _mm_add_epi32(sum1, sum2);
+            __m128i res_lo = _mm_srli_epi16(sum_lo, 2);
+            __m128i res_hi = _mm_srli_epi16(sum_hi, 2);
 
-            __m128i result = _mm_srli_epi32(sum, 2);
+            __m128i result = _mm_packus_epi16(res_lo, res_hi);
 
-            __m128i result16 = _mm_packus_epi32(result, result);
-            __m128i result8 = _mm_packus_epi16(result16, result16);
-
-            int out;
-            out = _mm_cvtsi128_si32(result8);
-            std::memcpy(&dst[y * w + x], &out, 4);
+            _mm_storeu_si128((__m128i*)&dst[y * w + x], result);
         }
 
         for (; x < w - 1; ++x) {
@@ -63,8 +56,7 @@ void blur_simd(const unsigned char* src, unsigned char* dst, int w, int h) {
             int c = src[(y + 1) * w + x];
             int d = src[(y + 1) * w + x + 1];
 
-            int result = (a + b + c + d) / 4;
-            dst[y * w + x] = static_cast<unsigned char>(result);
+            dst[y * w + x] = static_cast<unsigned char>((a + b + c + d) / 4);
         }
     }
 }
